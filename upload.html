@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Note - CollegeHub</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <header>
+        <nav class="container">
+            <a href="index.html" class="logo">CollegeHub</a>
+            <ul>
+                </ul>
+        </nav>
+    </header>
+
+    <main class="container page-padding">
+        <h1 class="page-title">Upload a New Note</h1>
+        
+        <form action="/upload" method="POST" enctype="multipart/form-data" class="review-form">
+            <label for="title">Note Title:</label>
+            <input type="text" id="title" name="title" required>
+
+            <label for="subject">Subject:</label>
+            <input type="text" id="subject" name="subject" required>
+            
+            <label for="branch">Branch:</label>
+            <select id="branch" name="branch" required>
+                <option value="" disabled selected>Select a Branch</option>
+                <option value="Computer Science">Computer Science & Engineering</option>
+                <option value="Information Science">Information Science & Engineering</option>
+            </select>
+
+            <label for="noteFile">Select File:</label>
+            <input type="file" id="noteFile" name="noteFile" required>
+
+            <button type="submit" class="cta-button">Upload Note</button>
+        </form>
+    </main>
+
+    <script src="main.js"></script>
+
+</body>
+</html>

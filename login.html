@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - CollegeHub</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <header>
+        <nav class="container">
+            <a href="index.html" class="logo">CollegeHub</a>
+            <ul>
+                
+            </ul>
+        </nav>
+    </header>
+
+    <main class="login-container">
+        <div class="form-box">
+            <h2>Login</h2>
+            <form action="/login" method="POST">
+                <div class="input-group">
+                    <label for="login-usn">USN</label>
+                    <input type="text" id="login-usn" name="usn" placeholder="Enter your USN" required>
+                </div>
+                <div class="input-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" name="password" placeholder="Enter your password" required>
+                </div>
+                <button type="submit" class="cta-button login-page-btn">Login</button>
+            </form>
+        </div>
+    
+        <div class="form-box">
+            <h2>Create an Account</h2>
+            <form action="/register" method="POST"> 
+                <div class="input-group">
+                    <label for="register-name">Full Name</label>
+                    <input type="text" id="register-name" name="name" placeholder="Enter your full name" required>
+                </div>
+                <div class="input-group">
+                    <label for="register-usn">USN (e.g., 1ce21cs001)</label>
+                    <input type="text" id="register-usn" name="usn" placeholder="Enter your college USN" required>
+                </div>
+                <div class="input-group">
+                    <label for="register-password">Password</label>
+                    <input type="password" id="register-password" name="password" placeholder="Create a password" required>
+                </div>
+                <button type="submit" class="cta-button login-page-btn">Register</button>
+            </form>
+        </div>
+    </main>
+
+    <footer class="login-footer">
+        <div class="container">
+            <p>&copy; 2025 CollegeHub. Made with ❤️ by a fellow student.</p>
+        </div>
+    </footer>
+<script src="main.js"></script>
+</body>
+</html>

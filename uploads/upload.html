@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Upload Note</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>...</header> <main class="container page-padding">
+        <h1 class="page-title">Upload a New Note</h1>
+        <form action="/upload" method="POST" enctype="multipart/form-data" class="review-form">
+            <label for="title">Note Title:</label>
+            <input type="text" id="title" name="title" required>
+
+            <label for="subject">Subject:</label>
+            <input type="text" id="subject" name="subject" required>
+
+            <label for="noteFile">PDF File:</label>
+            <input type="file" id="noteFile" name="noteFile" required>
+
+            <button type="submit" class="cta-button">Upload Note</button>
+        </form>
+    </main>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Note Details - CollegeHub</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .pdf-iframe { width: 100% !important; max-width: 1100px !important; height: 80vh !important; display: block !important; margin: auto !important; }
+        .rating-summary { background: #e9f5ff; border-left: 5px solid #007bff; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+        .rating-summary h3 { margin-top: 0; }
+        .star { font-size: 1.5rem; color: #ffc107; }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="index.html" class="logo">CollegeHub</a>
+            <ul></ul>
+        </nav>
+    </header>
+
+    <main class="container page-padding">
+        <section id="note-viewer-section">
+            <h1 id="note-title" style="text-align: center;">Loading note...</h1>
+            <div id="pdf-viewer-container"></div>
+        </section>
+
+        <section class="reviews-section">
+            <h2>Student Reviews</h2>
+            <div id="rating-summary" class="rating-summary"></div>
+            <div id="reviews-list"></div>
+
+            <div class="review-form">
+                <h3>Leave a Review</h3>
+                <form id="review-form">
+                    <label for="rating">Rating:</label>
+                    <select id="rating" name="rating" required>
+                        <option value="" disabled selected>Select a Rating</option>
+                        <option value="5">★★★★★ (Excellent)</option>
+                        <option value="4">★★★★☆ (Good)</option>
+                        <option value="3">★★★☆☆ (Average)</option>
+                        <option value="2">★★☆☆☆ (Poor)</option>
+                        <option value="1">★☆☆☆☆ (Terrible)</option>
+                    </select>
+                    <label for="comment">Your Comment:</label>
+                    <textarea id="comment" name="comment" rows="4" required></textarea>
+                    <button type="submit" class="cta-button">Submit Review</button>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <script src="main.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const noteId = params.get('id');
+
+            const noteTitleElement = document.getElementById('note-title');
+            const pdfContainer = document.getElementById('pdf-viewer-container');
+            const ratingSummaryEl = document.getElementById('rating-summary');
+            const reviewsListEl = document.getElementById('reviews-list');
+            const reviewForm = document.getElementById('review-form');
+
+            // --- 1. Fetch Note Details and Embed PDF ---
+            if (noteId) {
+                fetch(`/api/notes/${noteId}`)
+                    .then(response => response.json())
+                    .then(note => {
+                        if (note) {
+                            noteTitleElement.textContent = note.title;
+                            const pdfEmbed = document.createElement('iframe');
+                            pdfEmbed.src = `/${note.filepath}`;
+                            pdfEmbed.className = 'pdf-iframe';
+                            pdfContainer.appendChild(pdfEmbed);
+                        } else {
+                            noteTitleElement.textContent = 'Note not found.';
+                        }
+                    });
+                
+                // --- 2. Fetch and Display Reviews ---
+                loadReviews();
+            }
+
+            function loadReviews() {
+                fetch(`/api/notes/${noteId}/reviews`)
+                    .then(response => response.json())
+                    .then(reviews => {
+                        reviewsListEl.innerHTML = ''; // Clear existing reviews
+                        if (reviews.length === 0) {
+                            ratingSummaryEl.innerHTML = '<h3>No reviews yet. Be the first!</h3>';
+                            return;
+                        }
+
+                        // Calculate average rating
+                        const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+                        const averageRating = (totalRating / reviews.length).toFixed(1);
+                        const stars = '★'.repeat(Math.round(averageRating)) + '☆'.repeat(5 - Math.round(averageRating));
+                        
+                        ratingSummaryEl.innerHTML = `<h3>Average Rating: ${averageRating} / 5.0 (${reviews.length} reviews)</h3><div class="star">${stars}</div>`;
+
+                        // Display each review
+                        reviews.forEach(review => {
+                            const reviewEl = document.createElement('div');
+                            reviewEl.className = 'review-card';
+                            reviewEl.innerHTML = `
+                                <div class="review-author">${review.user_name}</div>
+                                <div class="review-rating">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</div>
+                                <p class="review-text">${review.comment}</p>
+                            `;
+                            reviewsListEl.appendChild(reviewEl);
+                        });
+                    });
+            }
+
+            // --- 3. Handle New Review Submission ---
+            reviewForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const formData = new FormData(reviewForm);
+                const reviewData = {
+                    rating: formData.get('rating'),
+                    comment: formData.get('comment')
+                };
+
+                fetch(`/api/notes/${noteId}/reviews`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(reviewData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data.message);
+                    reviewForm.reset(); // Clear the form
+                    loadReviews(); // Reload reviews to show the new one
+                });
+            });
+        });
+    </script>
+</body>
+</html>

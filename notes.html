@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Course Notes - CollegeHub</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <header>
+        <nav class="container">
+            <a href="index.html" class="logo">CollegeHub</a>
+            <ul>
+                </ul>
+        </nav>
+    </header>
+
+    <main class="container page-padding">
+        <h1 class="page-title">Register with your USN!!!</h1>
+        <p class="page-subtitle">Enter you USN get the access of notes free of cost</p>
+        
+        <div id="notes-container">
+            </div>
+    </main>
+
+   <script>
+        // 1. First, build the dynamic navigation bar
+        const navLinksContainer = document.querySelector('header nav ul');
+        fetch('/api/user-status')
+            .then(response => response.json())
+            .then(data => {
+                let navLinksHTML = `
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="notes.html">Notes</a></li>
+                    <li><a href="about.html">About</a></li>
+                `;
+                if (data.loggedIn) {
+                    navLinksHTML += `
+                        <li><a href="upload.html">Upload Notes</a></li>
+                        <li><a href="/logout">Logout</a></li>
+                        <li class="nav-user">Welcome, ${data.name}!</li>
+                    `;
+                } else {
+                    navLinksHTML += `
+                        <li><a href="login.html" class="login-btn">Login / Register</a></li>
+                    `;
+                }
+                navLinksContainer.innerHTML = navLinksHTML;
+            });
+
+        // 2. Second, fetch and display the notes
+        const container = document.getElementById('notes-container');
+        fetch('/api/notes')
+            .then(response => response.json())
+            .then(notes => {
+                if (notes.length === 0) {
+                    container.innerHTML = '<p style="text-align: center;">No notes have been uploaded yet.</p>';
+                    return;
+                }
+
+                const branches = {
+                    "Computer Science": [],
+                    "Information Science": []
+                };
+
+                notes.forEach(note => {
+                    if (branches[note.branch]) {
+                        branches[note.branch].push(note);
+                    }
+                });
+
+                container.innerHTML = '';
+
+                for (const branchName in branches) {
+                    const branchNotes = branches[branchName];
+                    const section = document.createElement('section');
+                    section.className = 'subject-section';
+                    
+                    let notesHTML = `<h2>${branchName} & Engineering</h2>`;
+
+                    if (branchNotes.length > 0) {
+                        notesHTML += `<div class="note-list">`;
+                        branchNotes.forEach(note => {
+                            // --- THIS IS THE CORRECTED LINE ---
+                            // It now points back to the detail page on the same tab
+                            notesHTML += `
+                                <a href="/note-detail.html?id=${note.id}" class="note-item">
+                                    <h3>${note.title}</h3>
+                                    <p>Subject: ${note.subject}</p>
+                                </a>
+                            `;
+                        });
+                        notesHTML += `</div>`;
+                    } else {
+                        notesHTML += `<p>No notes uploaded for this branch yet.</p>`;
+                    }
+                    
+                    section.innerHTML = notesHTML;
+                    container.appendChild(section);
+                }
+            });
+    </script>
+</body>
+</html>

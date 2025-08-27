@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>PDF Test</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            background-color: #e0e0e0;
+        }
+        .pdf-iframe {
+            width: 90% !important;              /* Should be very wide */
+            height: 80vh !important;             /* Should be very tall */
+            border: 3px solid red !important;  /* It MUST have a red border */
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>PDF Viewer Test Page</h1>
+    <p>This iframe below should be very wide and have a thick red border.</p>
+
+    <iframe class="pdf-iframe" src="https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"></iframe>
+
+</body>
+</html>
