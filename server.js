@@ -9,27 +9,20 @@ const bcrypt = require('bcrypt');
 const session = require('express-session');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
-const fs = require('fs'); // Added for the robust upload method
+const fs = require('fs');
 
 // =================================================================
-// --- APP CONFIGURATION ---
+// --- APP CONFIGURATION & MIDDLEWARE ---
 // =================================================================
 const app = express();
 const PORT = process.env.PORT || 3000;
 const saltRounds = 10;
-
-// =================================================================
-// --- CLOUDINARY & MULTER CONFIGURATION ---
-// =================================================================
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) { cb(null, 'uploads/'); },
-    filename: function (req, file, cb) { cb(null, Date.now() + '-' + file.originalname); }
+    destination: (req, file, cb) => { cb(null, 'uploads/'); },
+    filename: (req, file, cb) => { cb(null, Date.now() + '-' + file.originalname); }
 });
 const upload = multer({ storage: storage });
 
-// =================================================================
-// --- MIDDLEWARE SETUP ---
-// =================================================================
 app.use(session({
     secret: 'a-very-secret-key-that-you-should-change',
     resave: false,
@@ -41,7 +34,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
 // =================================================================
-// --- DATABASE CONNECTION (PostgreSQL) ---
+// --- DATABASE CONNECTION & MIDDLEWARE ---
 // =================================================================
 const db = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -49,9 +42,6 @@ const db = new Pool({
 });
 console.log('Connected to the PostgreSQL database. 🐘');
 
-// =================================================================
-// --- HELPER & PROTECTION MIDDLEWARE ---
-// =================================================================
 const checkAuthenticated = (req, res, next) => {
     if (req.session.user) { return next(); }
     res.redirect('/login.html');
@@ -92,7 +82,46 @@ app.get('/api/notes', checkAuthenticated, async (req, res) => {
     }
 });
 
-// ... (Other API routes for notes/:id, reviews, and feedback are correct)
+app.get('/api/notes/:id', checkAuthenticated, async (req, res) => {
+    try {
+        const { rows } = await db.query(`SELECT * FROM notes WHERE id = $1 AND approved = true`, [req.params.id]);
+        res.json(rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/notes/:id/reviews', checkAuthenticated, async (req, res) => {
+    try {
+        const { rows } = await db.query(`SELECT * FROM reviews WHERE note_id = $1 ORDER BY created_at DESC`, [req.params.id]);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/notes/:id/reviews', checkAuthenticated, async (req, res) => {
+    const { rating, comment } = req.body;
+    const { id: userId, name: userName } = req.session.user;
+    try {
+        const { rows } = await db.query(`INSERT INTO reviews (note_id, user_id, user_name, rating, comment) VALUES ($1, $2, $3, $4, $5) RETURNING id`, [req.params.id, userId, userName, rating, comment]);
+        res.json({ message: 'Review added successfully!', reviewId: rows[0].id });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/feedback', async (req, res) => {
+    const { message } = req.body;
+    const userId = req.session.user ? req.session.user.id : null;
+    const userName = req.session.user ? req.session.user.name : 'Anonymous';
+    try {
+        await db.query(`INSERT INTO feedback (user_id, user_name, message) VALUES ($1, $2, $3)`, [userId, userName, message]);
+        res.json({ success: true, message: 'Feedback submitted.' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // --- ADMIN API ROUTES ---
 app.get('/api/admin/users', checkAdmin, async (req, res) => {
@@ -131,13 +160,10 @@ app.post('/api/admin/notes/:id/approve', checkAdmin, async (req, res) => {
     }
 });
 
-// --- THIS IS THE NEW DELETE ROUTE ---
 app.delete('/api/admin/notes/:id', checkAdmin, async (req, res) => {
     const noteId = req.params.id;
     try {
-        // Important: Delete associated reviews first to avoid foreign key errors
         await db.query(`DELETE FROM reviews WHERE note_id = $1`, [noteId]);
-        // Now, delete the note itself
         await db.query(`DELETE FROM notes WHERE id = $1`, [noteId]);
         res.json({ success: true, message: 'Note and associated reviews deleted.' });
     } catch (err) {
@@ -145,7 +171,6 @@ app.delete('/api/admin/notes/:id', checkAdmin, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 
 // --- AUTHENTICATION & UPLOAD ROUTES ---
 app.post('/register', async (req, res) => {
@@ -155,9 +180,7 @@ app.post('/register', async (req, res) => {
         await db.query(`INSERT INTO users (name, usn, password) VALUES ($1, $2, $3)`, [name, usn.toLowerCase(), hash]);
         res.send('Registration successful! Please <a href="/login.html">login</a>.');
     } catch (err) {
-        if (err.code === '23505') {
-            return res.send('Error: This USN is already registered.');
-        }
+        if (err.code === '23505') { return res.send('Error: This USN is already registered.'); }
         console.error("Registration Error:", err.message);
         res.status(500).send('Server error during registration.');
     }
@@ -169,6 +192,7 @@ app.post('/login', async (req, res) => {
         const { rows } = await db.query(`SELECT * FROM users WHERE usn = $1`, [usn.toLowerCase()]);
         const user = rows[0];
         if (!user) return res.status(401).send('Login failed: User not found.');
+
         const match = await bcrypt.compare(password, user.password);
         if (match) {
             req.session.user = { id: user.id, name: user.name, usn: user.usn, role: user.role };
@@ -226,3 +250,4 @@ app.get('/feedback.html', (req, res) => { res.sendFile(path.join(__dirname, 'fee
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
+
