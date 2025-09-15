@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Note Details - CollegeHub</title>
+    <title>Note Details - The Gradebook</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
-        /* Styles for the review section */
         .rating-summary { background: #e9f5ff; border-left: 5px solid #007bff; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
         .rating-summary h3 { margin-top: 0; }
         .star { font-size: 1.5rem; color: #ffc107; }
@@ -16,8 +15,8 @@
 <body>
     <header>
         <nav class="container">
-            <a href="index.html" class="logo">CollegeHub</a>
-            <ul></ul>
+            <a href="index.html" class="logo">The Gradebook</a>
+            <ul><!-- Filled by main.js --></ul>
         </nav>
     </header>
 
@@ -26,7 +25,8 @@
         <section id="note-download-section" class="download-section">
             <h1 id="note-title">Loading note...</h1>
             <div id="download-button-container" style="margin-top: 20px;">
-                </div>
+                <!-- The download button will be created here by JavaScript -->
+            </div>
         </section>
 
         <section class="reviews-section">
@@ -55,41 +55,76 @@
             const noteTitleElement = document.getElementById('note-title');
             const downloadContainer = document.getElementById('download-button-container');
             const reviewForm = document.getElementById('review-form');
-            // ... (other review variables)
+            const reviewsListEl = document.getElementById('reviews-list');
+            const ratingSummaryEl = document.getElementById('rating-summary');
 
             if (noteId) {
-                // --- 1. Fetch Note Details and Create Download Button ---
+                // 1. Fetch Note Details and Create Download Button
                 fetch(`/api/notes/${noteId}`)
                     .then(response => response.json())
                     .then(note => {
                         if (note && note.filepath) {
                             noteTitleElement.textContent = note.title;
                             
-                            // Create a download button instead of an iframe
                             const downloadBtn = document.createElement('a');
                             downloadBtn.href = note.filepath;
                             downloadBtn.className = 'cta-button';
                             downloadBtn.textContent = 'Download Notes';
+                            downloadBtn.target = '_blank'; // Ensures it downloads or opens in a new tab
                             
-                            downloadContainer.innerHTML = ''; // Clear loading message
+                            downloadContainer.innerHTML = '';
                             downloadContainer.appendChild(downloadBtn);
                         } else {
-                            noteTitleElement.textContent = 'Note not found.';
+                            noteTitleElement.textContent = 'Note not found or not yet approved.';
                         }
                     });
                 
-                // --- 2. Fetch and Display Reviews (this logic remains the same) ---
+                // 2. Fetch and Display Reviews
                 loadReviews();
             }
 
             function loadReviews() {
-                // ... (your existing loadReviews function is perfect and doesn't need to change)
+                fetch(`/api/notes/${noteId}/reviews`)
+                    .then(response => response.json())
+                    .then(reviews => {
+                        reviewsListEl.innerHTML = ''; 
+                        if (reviews.length === 0) {
+                            ratingSummaryEl.innerHTML = '<h3>No reviews yet. Be the first!</h3>';
+                            return;
+                        }
+                        const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+                        const averageRating = (totalRating / reviews.length).toFixed(1);
+                        const stars = '★'.repeat(Math.round(averageRating)) + '☆'.repeat(5 - Math.round(averageRating));
+                        ratingSummaryEl.innerHTML = `<h3>Average Rating: ${averageRating} / 5.0 (${reviews.length} reviews)</h3><div class="star">${stars}</div>`;
+                        reviews.forEach(review => {
+                            const reviewEl = document.createElement('div');
+                            reviewEl.className = 'review-card';
+                            reviewEl.innerHTML = `<div class="review-author">${review.user_name}</div><div class="review-rating">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</div><p class="review-text">${review.comment}</p>`;
+                            reviewsListEl.appendChild(reviewEl);
+                        });
+                    });
             }
 
             reviewForm.addEventListener('submit', (event) => {
-                 // ... (your existing review submission logic is perfect and doesn't need to change)
+                event.preventDefault();
+                const formData = new FormData(reviewForm);
+                const reviewData = {
+                    rating: formData.get('rating'),
+                    comment: formData.get('comment')
+                };
+                fetch(`/api/notes/${noteId}/reviews`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(reviewData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    reviewForm.reset();
+                    loadReviews();
+                });
             });
         });
     </script>
 </body>
 </html>
+
