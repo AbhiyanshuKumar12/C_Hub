@@ -8,19 +8,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
-
     <header>
         <nav class="container">
             <a href="index.html" class="logo">CollegeHub</a>
-            <ul>
-                </ul>
+            <ul></ul>
         </nav>
     </header>
 
     <main class="container page-padding">
         <h1 class="page-title">Upload a New Note</h1>
         
-        <form action="/upload" method="POST" enctype="multipart/form-data" class="review-form">
+        <form id="upload-form" action="/upload" method="POST" enctype="multipart/form-data" class="review-form">
             <label for="title">Note Title:</label>
             <input type="text" id="title" name="title" required>
 
@@ -34,14 +32,30 @@
                 <option value="Information Science">Information Science & Engineering</option>
             </select>
 
+            <label for="professor_name">Professor Name (Optional):</label>
+            <input type="text" id="professor_name" name="professor_name" placeholder="e.g., Prof. Alan Turing">
+
             <label for="noteFile">Select File:</label>
             <input type="file" id="noteFile" name="noteFile" required>
 
-            <button type="submit" class="cta-button">Upload Note</button>
+            <button type="submit" class="cta-button">Submit for Approval</button>
         </form>
     </main>
 
     <script src="main.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('upload-form');
+            const submitButton = form.querySelector('button[type="submit"]');
+
+            form.addEventListener('submit', () => {
+                // When the user clicks submit, disable the button and change the text
+                submitButton.disabled = true;
+                submitButton.textContent = 'Uploading, please wait...';
+            });
+        });
+    </script>
 
 </body>
 </html>

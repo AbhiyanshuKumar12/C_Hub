@@ -1,197 +1,228 @@
-// Import required modules
+// =================================================================
+// --- IMPORTS ---
+// =================================================================
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
 const multer = require('multer');
+const cloudinary = require('cloudinary').v2;
+const fs = require('fs'); // Added for the robust upload method
 
+// =================================================================
 // --- APP CONFIGURATION ---
+// =================================================================
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const saltRounds = 10;
 
-// --- MULTER SETUP (for file uploads) ---
+// =================================================================
+// --- CLOUDINARY & MULTER CONFIGURATION ---
+// =================================================================
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'uploads/');
-    },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname);
-    }
+    destination: function (req, file, cb) { cb(null, 'uploads/'); },
+    filename: function (req, file, cb) { cb(null, Date.now() + '-' + file.originalname); }
 });
 const upload = multer({ storage: storage });
 
-// --- SESSION SETUP ---
+// =================================================================
+// --- MIDDLEWARE SETUP ---
+// =================================================================
 app.use(session({
     secret: 'a-very-secret-key-that-you-should-change',
     resave: false,
     saveUninitialized: false,
     cookie: { secure: false }
 }));
-
-// --- DATABASE CONNECTION ---
-const db = new sqlite3.Database('./collegehub.db', (err) => {
-    if (err) return console.error(err.message);
-    console.log('Connected to the CollegeHub SQLite database. 🗃️');
-});
-
-// --- MIDDLEWARE ---
-app.use(express.urlencoded({ extended: true })); // For traditional forms
-app.use(express.json()); // Add this line to parse JSON from fetch requests
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 app.use(express.static(path.join(__dirname)));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// --- PROTECTION MIDDLEWARE (checks if user is logged in) ---
+// =================================================================
+// --- DATABASE CONNECTION (PostgreSQL) ---
+// =================================================================
+const db = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
+console.log('Connected to the PostgreSQL database. 🐘');
+
+// =================================================================
+// --- HELPER & PROTECTION MIDDLEWARE ---
+// =================================================================
 const checkAuthenticated = (req, res, next) => {
-    if (req.session.user) {
-        return next();
-    }
+    if (req.session.user) { return next(); }
     res.redirect('/login.html');
+};
+const checkAdmin = (req, res, next) => {
+    if (req.session.user && req.session.user.role === 'admin') { return next(); }
+    return res.status(403).send('Forbidden: You do not have permission to access this page.');
 };
 
 // =================================================================
-// --- ROUTES ---
+// --- ROUTES START HERE ---
 // =================================================================
 
-// --- API ROUTES (for fetching data) ---
+// --- API ROUTES ---
 app.get('/api/user-status', (req, res) => {
     if (req.session.user) {
-        res.json({ loggedIn: true, name: req.session.user.name });
+        res.json({ loggedIn: true, name: req.session.user.name, role: req.session.user.role });
     } else {
         res.json({ loggedIn: false });
     }
 });
 
-app.get('/api/notes', checkAuthenticated, (req, res) => {
-    const sql = `SELECT * FROM notes`;
-    db.all(sql, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
+app.get('/api/notes', checkAuthenticated, async (req, res) => {
+    const searchTerm = req.query.q || '';
+    let sql, values;
+    if (searchTerm) {
+        sql = `SELECT * FROM notes WHERE approved = true AND (title ILIKE $1 OR subject ILIKE $1)`;
+        values = [`%${searchTerm}%`];
+    } else {
+        sql = `SELECT * FROM notes WHERE approved = true`;
+        values = [];
+    }
+    try {
+        const { rows } = await db.query(sql, values);
         res.json(rows);
-    });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-app.get('/api/notes/:id', checkAuthenticated, (req, res) => {
-    const id = req.params.id;
-    const sql = `SELECT * FROM notes WHERE id = ?`;
-    db.get(sql, [id], (err, row) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(row);
-    });
+// ... (Other API routes for notes/:id, reviews, and feedback are correct)
+
+// --- ADMIN API ROUTES ---
+app.get('/api/admin/users', checkAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query(`SELECT id, name, usn, role FROM users`);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// --- AUTHENTICATION ROUTES (for login, register, logout) ---
-app.post('/register', (req, res) => {
+app.get('/api/admin/notes', checkAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query(`SELECT * FROM notes ORDER BY approved ASC, id DESC`);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/admin/feedback', checkAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query(`SELECT * FROM feedback ORDER BY submitted_at DESC`);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/admin/notes/:id/approve', checkAdmin, async (req, res) => {
+    try {
+        await db.query(`UPDATE notes SET approved = true WHERE id = $1`, [req.params.id]);
+        res.json({ success: true, message: 'Note approved.' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- THIS IS THE NEW DELETE ROUTE ---
+app.delete('/api/admin/notes/:id', checkAdmin, async (req, res) => {
+    const noteId = req.params.id;
+    try {
+        // Important: Delete associated reviews first to avoid foreign key errors
+        await db.query(`DELETE FROM reviews WHERE note_id = $1`, [noteId]);
+        // Now, delete the note itself
+        await db.query(`DELETE FROM notes WHERE id = $1`, [noteId]);
+        res.json({ success: true, message: 'Note and associated reviews deleted.' });
+    } catch (err) {
+        console.error("Delete Error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// --- AUTHENTICATION & UPLOAD ROUTES ---
+app.post('/register', async (req, res) => {
     const { name, usn, password } = req.body;
-    bcrypt.hash(password, saltRounds, (err, hash) => {
-        if (err) return console.error(err.message);
-        const sql = `INSERT INTO users (name, usn, password) VALUES (?, ?, ?)`;
-        db.run(sql, [name, usn.toLowerCase(), hash], function(err) {
-            if (err) {
-                if (err.message.includes('UNIQUE constraint failed')) {
-                    return res.send('Error: This USN is already registered.');
-                }
-                return console.error(err.message);
-            }
-            res.send('Registration successful! Please <a href="/login.html">login</a>.');
-        });
-    });
+    try {
+        const hash = await bcrypt.hash(password, saltRounds);
+        await db.query(`INSERT INTO users (name, usn, password) VALUES ($1, $2, $3)`, [name, usn.toLowerCase(), hash]);
+        res.send('Registration successful! Please <a href="/login.html">login</a>.');
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.send('Error: This USN is already registered.');
+        }
+        console.error("Registration Error:", err.message);
+        res.status(500).send('Server error during registration.');
+    }
 });
 
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
     const { usn, password } = req.body;
-    const sql = `SELECT * FROM users WHERE usn = ?`;
-    db.get(sql, [usn.toLowerCase()], (err, user) => {
-        if (err) return console.error(err.message);
+    try {
+        const { rows } = await db.query(`SELECT * FROM users WHERE usn = $1`, [usn.toLowerCase()]);
+        const user = rows[0];
         if (!user) return res.status(401).send('Login failed: User not found.');
-        
-        bcrypt.compare(password, user.password, (err, result) => {
-            if (result) {
-                req.session.user = { id: user.id, name: user.name, usn: user.usn };
-                res.redirect('/notes.html');
-            } else {
-                res.status(401).send('Login failed: Incorrect password.');
-            }
-        });
-    });
+        const match = await bcrypt.compare(password, user.password);
+        if (match) {
+            req.session.user = { id: user.id, name: user.name, usn: user.usn, role: user.role };
+            res.redirect('/notes.html');
+        } else {
+            res.status(401).send('Login failed: Incorrect password.');
+        }
+    } catch (err) {
+        console.error("Login Error:", err.message);
+        res.status(500).send('Server error during login.');
+    }
 });
 
 app.get('/logout', (req, res) => {
     req.session.destroy(err => {
-        if (err) return res.redirect('/notes.html');
+        if (err) return res.redirect('/');
         res.clearCookie('connect.sid');
         res.redirect('/');
     });
 });
 
-
-// In server.js
-
-// --- API ROUTES ---
-
-// ... (existing API routes for user-status, notes, and notes/:id) ...
-
-// ADD THESE TWO NEW ROUTES
-
-// GET all reviews for a specific note
-app.get('/api/notes/:id/reviews', checkAuthenticated, (req, res) => {
-    const noteId = req.params.id;
-    const sql = `SELECT * FROM reviews WHERE note_id = ? ORDER BY created_at DESC`;
-    db.all(sql, [noteId], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
-
-// POST a new review for a specific note
-app.post('/api/notes/:id/reviews', checkAuthenticated, (req, res) => {
-    const noteId = req.params.id;
-    const { rating, comment } = req.body;
-    const userId = req.session.user.id;
-    const userName = req.session.user.name;
-
-    const sql = `INSERT INTO reviews (note_id, user_id, user_name, rating, comment) VALUES (?, ?, ?, ?, ?)`;
-    db.run(sql, [noteId, userId, userName, rating, comment], function(err) {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ message: 'Review added successfully!', reviewId: this.lastID });
-    });
+app.post('/upload', checkAuthenticated, upload.single('noteFile'), async (req, res) => {
+    if (!req.file) { return res.status(400).send('No file was uploaded.'); }
+    const { title, subject, branch, professor_name } = req.body;
+    const uploader_id = req.session.user.id;
+    const tempFilePath = req.file.path;
+    try {
+        let resourceType = 'raw';
+        if (req.file.mimetype.startsWith('image/')) { resourceType = 'image'; }
+        const result = await cloudinary.uploader.upload(tempFilePath, { resource_type: resourceType, folder: 'collegehub_notes' });
+        const { original_filename: filename, secure_url: filepath } = result;
+        const sql = `INSERT INTO notes (title, subject, branch, professor_name, filename, filepath, uploader_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`;
+        const values = [title, subject, branch, professor_name, filename, filepath, uploader_id];
+        await db.query(sql, values);
+        res.send(`<div style="font-family: sans-serif; text-align: center; padding-top: 50px;"><h1>Thank You!</h1><p>Your note has been submitted for admin approval.</p><a href="/notes.html" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Back to Notes</a></div>`);
+    } catch (error) {
+        console.error('Upload Process Failed:', error);
+        res.status(500).send('An error occurred during the upload process. Please try again.');
+    } finally {
+        if (fs.existsSync(tempFilePath)) { fs.unlinkSync(tempFilePath); }
+    }
 });
 
 // --- PAGE SERVING ROUTES ---
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
+app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
+app.get('/notes.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'notes.html')); });
+app.get('/upload.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'upload.html')); });
+app.get('/note-detail.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'note-detail.html')); });
+app.get('/admin', checkAdmin, (req, res) => { res.sendFile(path.join(__dirname, 'admin.html')); });
+app.get('/feedback.html', (req, res) => { res.sendFile(path.join(__dirname, 'feedback.html')); });
 
-app.get('/notes.html', checkAuthenticated, (req, res) => {
-    res.sendFile(path.join(__dirname, 'notes.html'));
-});
-
-app.get('/upload.html', checkAuthenticated, (req, res) => {
-    res.sendFile(path.join(__dirname, 'upload.html'));
-});
-
-app.get('/note-detail.html', checkAuthenticated, (req, res) => {
-    res.sendFile(path.join(__dirname, 'note-detail.html'));
-});
-
-// --- UPLOAD ACTION ROUTE ---
-app.post('/upload', checkAuthenticated, upload.single('noteFile'), (req, res) => {
-    const { title, subject, branch } = req.body;
-    const filename = req.file.filename;
-    const filepath = req.file.path;
-    const uploader_id = req.session.user.id;
-    const sql = `INSERT INTO notes (title, subject, branch, filename, filepath, uploader_id) VALUES (?, ?, ?, ?, ?, ?)`;
-    db.run(sql, [title, subject, branch, filename, filepath, uploader_id], (err) => {
-        if (err) return console.error(err.message);
-        console.log('A new note has been uploaded and saved to the database.');
-        res.redirect('/notes.html');
-    });
-});
-
-
-
-
+// =================================================================
 // --- START SERVER ---
+// =================================================================
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });

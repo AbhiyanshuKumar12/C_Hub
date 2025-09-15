@@ -8,99 +8,102 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
-
     <header>
         <nav class="container">
             <a href="index.html" class="logo">CollegeHub</a>
-            <ul>
-                </ul>
+            <ul><!-- Filled by script --></ul>
         </nav>
     </header>
 
     <main class="container page-padding">
-        <h1 class="page-title">Register with your USN!!!</h1>
-        <p class="page-subtitle">Enter you USN get the access of notes free of cost</p>
+        <h1 class="page-title">Course Notes</h1>
         
-        <div id="notes-container">
-            </div>
+        <!-- This is the new search bar -->
+        <form id="search-form" class="review-form" style="margin-bottom: 40px; max-width: none;">
+            <input type="search" id="search-input" name="q" placeholder="Search by title or subject..." style="width: 80%; display: inline-block; margin-right: 10px;">
+            <button type="submit" class="cta-button" style="width: 18%;">Search</button>
+        </form>
+        
+        <div id="notes-container"><!-- Notes will be loaded here --></div>
     </main>
-
+    
    <script>
-        // 1. First, build the dynamic navigation bar
+        // Build the dynamic navigation bar (This logic is correct and unchanged)
         const navLinksContainer = document.querySelector('header nav ul');
-        fetch('/api/user-status')
-            .then(response => response.json())
-            .then(data => {
-                let navLinksHTML = `
-                    <li><a href="index.html">Home</a></li>
-                    <li><a href="notes.html">Notes</a></li>
-                    <li><a href="about.html">About</a></li>
-                `;
-                if (data.loggedIn) {
-                    navLinksHTML += `
-                        <li><a href="upload.html">Upload Notes</a></li>
-                        <li><a href="/logout">Logout</a></li>
-                        <li class="nav-user">Welcome, ${data.name}!</li>
-                    `;
-                } else {
-                    navLinksHTML += `
-                        <li><a href="login.html" class="login-btn">Login / Register</a></li>
-                    `;
-                }
-                navLinksContainer.innerHTML = navLinksHTML;
-            });
+        fetch('/api/user-status').then(res => res.json()).then(data => {
+            let navLinksHTML = `<li><a href="index.html">Home</a></li><li><a href="notes.html">Notes</a></li><li><a href="about.html">About</a></li><li><a href="feedback.html">Feedback</a></li>`;
+            if (data.loggedIn) {
+                navLinksHTML += `<li><a href="upload.html">Upload Notes</a></li>`;
+                if (data.role === 'admin') navLinksHTML += `<li><a href="/admin">Admin</a></li>`;
+                navLinksHTML += `<li><a href="/logout">Logout</a></li><li class="nav-user">Welcome, ${data.name}!</li>`;
+            } else {
+                navLinksHTML += `<li><a href="login.html" class="login-btn">Login / Register</a></li>`;
+            }
+            navLinksContainer.innerHTML = navLinksHTML;
+        });
 
-        // 2. Second, fetch and display the notes
+        // --- NEW SCRIPT TO HANDLE FETCHING AND SEARCHING NOTES ---
         const container = document.getElementById('notes-container');
-        fetch('/api/notes')
-            .then(response => response.json())
-            .then(notes => {
-                if (notes.length === 0) {
-                    container.innerHTML = '<p style="text-align: center;">No notes have been uploaded yet.</p>';
-                    return;
-                }
+        const searchForm = document.getElementById('search-form');
+        const searchInput = document.getElementById('search-input');
 
-                const branches = {
-                    "Computer Science": [],
-                    "Information Science": []
-                };
+        // This function fetches notes from the server, with an optional search term
+        function fetchAndRenderNotes(searchTerm = '') {
+            let url = '/api/notes';
+            if (searchTerm) {
+                // Add the search term as a query parameter
+                url += `?q=${encodeURIComponent(searchTerm)}`;
+            }
 
-                notes.forEach(note => {
-                    if (branches[note.branch]) {
-                        branches[note.branch].push(note);
-                    }
+            fetch(url)
+                .then(response => response.json())
+                .then(notes => {
+                    renderNotes(notes);
                 });
+        }
 
-                container.innerHTML = '';
+        // This function takes an array of notes and displays them on the page
+        function renderNotes(notes) {
+            if (notes.length === 0) {
+                container.innerHTML = '<p style="text-align: center;">No notes found for your search.</p>';
+                return;
+            }
 
-                for (const branchName in branches) {
-                    const branchNotes = branches[branchName];
+            const branches = {"Computer Science": [], "Information Science": []};
+            notes.forEach(note => { if (branches[note.branch]) branches[note.branch].push(note); });
+            
+            container.innerHTML = ''; // Clear previous results
+            
+            for (const branchName in branches) {
+                const branchNotes = branches[branchName];
+                
+                // Only display the branch section if there are notes for it
+                if (branchNotes.length > 0) {
                     const section = document.createElement('section');
                     section.className = 'subject-section';
+                    let notesHTML = `<h2>${branchName} & Engineering</h2><div class="note-list">`;
                     
-                    let notesHTML = `<h2>${branchName} & Engineering</h2>`;
+                    branchNotes.forEach(note => {
+                        notesHTML += `<a href="/note-detail.html?id=${note.id}" class="note-item"><h3>${note.title}</h3><p>Subject: ${note.subject}</p></a>`;
+                    });
 
-                    if (branchNotes.length > 0) {
-                        notesHTML += `<div class="note-list">`;
-                        branchNotes.forEach(note => {
-                            // --- THIS IS THE CORRECTED LINE ---
-                            // It now points back to the detail page on the same tab
-                            notesHTML += `
-                                <a href="/note-detail.html?id=${note.id}" class="note-item">
-                                    <h3>${note.title}</h3>
-                                    <p>Subject: ${note.subject}</p>
-                                </a>
-                            `;
-                        });
-                        notesHTML += `</div>`;
-                    } else {
-                        notesHTML += `<p>No notes uploaded for this branch yet.</p>`;
-                    }
-                    
+                    notesHTML += `</div>`;
                     section.innerHTML = notesHTML;
                     container.appendChild(section);
                 }
-            });
+            }
+        }
+        
+        // Listen for when the user submits the search form
+        searchForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const searchTerm = searchInput.value.trim();
+            fetchAndRenderNotes(searchTerm);
+        });
+
+        // Load all approved notes when the page first opens
+        fetchAndRenderNotes();
     </script>
 </body>
 </html>
+

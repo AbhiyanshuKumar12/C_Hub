@@ -13,18 +13,19 @@
       <nav class="container">
         <a href="index.html" class="logo">CollegeHub</a>
         <ul>
-            
+            <!-- Filled by main.js -->
         </ul>
     </nav>
-        
     </header>
 
     <main>
+        <!-- The Hero section is now dynamic -->
         <section class="hero">
             <div class="container">
-                <h1>Welcome, Students!</h1>
-                <p>Your one-stop place for notes, reviews, and connecting with classmates.</p>
-                <a href="notes.html" class="cta-button">Explore Notes</a>
+                <!-- We've added IDs to these elements so the script can find them -->
+                <h1 id="hero-title">Welcome, Friends!</h1>
+                <p id="hero-subtitle">Your one-stop place for notes.</p>
+                <a href="login.html" class="cta-button" id="hero-cta">Register to Explore Notes</a>
             </div>
         </section>
 
@@ -41,8 +42,8 @@
                         <p>Read and write reviews on notes to help everyone find the best resources.</p>
                     </div>
                     <div class="feature-card">
-                        <h3>🤝 Community Hub</h3>
-                        <p>Connect with your peers, discuss topics, and help each other succeed.</p>
+                        <h3>🤝 Feedback</h3>
+                        <p>Your feedback will help to improve and grow together.</p>
                     </div>
                 </div>
             </div>
@@ -51,10 +52,32 @@
 
     <footer>
         <div class="container">
-            <p>&copy; 2025 CollegeHub. Made with ❤️ by a fellow student.</p>
+            <p>&copy; 2025 CollegeHub. Share with your friends.</p>
         </div>
     </footer>
 
-<script src="main.js"></script>
+    <script src="main.js"></script>
+
+    <!-- This new script will personalize the homepage -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const heroTitle = document.getElementById('hero-title');
+            const heroSubtitle = document.getElementById('hero-subtitle');
+            const heroCta = document.getElementById('hero-cta');
+
+            fetch('/api/user-status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.loggedIn) {
+                        // If the user is logged in, change the text
+                        heroTitle.textContent = `Hello, ${data.name}!`;
+                        heroSubtitle.textContent = 'Your feedback helps us improve and grow together.';
+                        heroCta.textContent = 'Give Feedback';
+                        heroCta.href = 'feedback.html';
+                    }
+                    // If the user is not logged in, the default text is already correct
+                });
+        });
+    </script>
 </body>
 </html>

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback - CollegeHub</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="index.html" class="logo">CollegeHub</a>
+            <ul><!-- Filled by main.js --></ul>
+        </nav>
+    </header>
+
+    <main class="container page-padding">
+        <div id="feedback-container">
+            <h1 class="page-title">Website Feedback</h1>
+            <p class="page-subtitle">Have a suggestion or found a bug? Let us know!</p>
+            <form id="feedback-form" class="review-form">
+                <label for="message">Your Feedback:</label>
+                <textarea id="message" name="message" rows="6" required placeholder="Tell us what you think..."></textarea>
+                <button type="submit" class="cta-button">Send Feedback</button>
+            </form>
+        </div>
+    </main>
+
+    <script src="main.js"></script>
+    <script>
+        const feedbackForm = document.getElementById('feedback-form');
+        const submitButton = feedbackForm.querySelector('button[type="submit"]');
+
+        feedbackForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            
+            // --- THIS IS THE FIX ---
+            // Disable the button and change the text immediately
+            submitButton.disabled = true;
+            submitButton.textContent = 'Sending...';
+
+            const message = document.getElementById('message').value;
+            fetch('/api/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('feedback-container').innerHTML = `
+                    <h1 class="page-title">Thank You!</h1>
+                    <p class="page-subtitle">Your feedback has been submitted successfully.</p>
+                `;
+            });
+        });
+    </script>
+</body>
+</html>

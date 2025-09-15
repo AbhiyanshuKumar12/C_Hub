@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - CollegeHub</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* Styles for the admin dashboard tables and buttons */
+        .status-pending { color: #ff8c00; font-weight: bold; }
+        .status-approved { color: #28a745; font-weight: bold; }
+        .approve-btn { background-color: #28a745; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer; border: none; }
+        .approve-btn:disabled { background-color: #ccc; cursor: not-allowed; }
+        /* --- NEW STYLE FOR THE DELETE BUTTON --- */
+        .delete-btn {
+            background-color: #dc3545; /* A standard red color */
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            border: none;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <nav class="container">
+            <a href="index.html" class="logo">CollegeHub</a>
+            <ul><!-- Filled by main.js --></ul>
+        </nav>
+    </header>
+
+    <main class="container page-padding">
+        <h1 class="page-title">Admin Dashboard</h1>
+        <p class="page-subtitle">Welcome to the admin control panel.</p>
+
+        <div id="admin-content">
+            <h2>Loading data...</h2>
+        </div>
+    </main>
+
+    <script src="main.js"></script>
+
+    <!-- This is the complete script for the admin dashboard -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const adminContent = document.getElementById('admin-content');
+            
+            function loadDashboard() {
+                Promise.all([
+                    fetch('/api/admin/users').then(res => res.json()),
+                    fetch('/api/admin/notes').then(res => res.json()),
+                    fetch('/api/admin/feedback').then(res => res.json())
+                ]).then(([users, notes, feedback]) => {
+                    
+                    // --- Build Users Table ---
+                    let usersHtml = `
+                        <section class="subject-section">
+                            <h2>Registered Users (${users.length})</h2>
+                            <table class="admin-table">
+                                <thead><tr><th>ID</th><th>Name</th><th>USN</th><th>Role</th></tr></thead>
+                                <tbody>`;
+                    users.forEach(user => {
+                        usersHtml += `
+                            <tr>
+                                <td>${user.id}</td>
+                                <td>${user.name}</td>
+                                <td>${user.usn}</td>
+                                <td>${user.role}</td>
+                            </tr>`;
+                    });
+                    usersHtml += `</tbody></table></section>`;
+
+                    // --- Build Notes Table with Approval & Delete Buttons ---
+                    let notesHtml = `
+                        <section class="subject-section">
+                            <h2>Uploaded Notes (${notes.length})</h2>
+                            <table class="admin-table">
+                                <thead><tr><th>Title</th><th>Subject</th><th>Status</th><th>Actions</th></tr></thead>
+                                <tbody>`;
+                    notes.forEach(note => {
+                        const statusClass = note.approved ? 'status-approved' : 'status-pending';
+                        const statusText = note.approved ? 'Approved' : 'Pending';
+                        const approveButton = !note.approved 
+                            ? `<button class="approve-btn" data-note-id="${note.id}">Approve</button>`
+                            : '';
+                        notesHtml += `
+                            <tr data-note-id="${note.id}">
+                                <td><a href="${note.filepath}" target="_blank">${note.title}</a></td>
+                                <td>${note.subject}</td>
+                                <td class="${statusClass}">${statusText}</td>
+                                <td>
+                                    ${approveButton}
+                                    <button class="delete-btn" data-note-id="${note.id}">Delete</button>
+                                </td>
+                            </tr>`;
+                    });
+                    notesHtml += `</tbody></table></section>`;
+
+                    // --- Build Feedback Table ---
+                    let feedbackHtml = `
+                        <section class="subject-section">
+                            <h2>Website Feedback (${feedback.length})</h2>
+                            <table class="admin-table">
+                                <thead><tr><th>From</th><th>Message</th><th>Date</th></tr></thead>
+                                <tbody>`;
+                    feedback.forEach(item => {
+                        feedbackHtml += `
+                            <tr>
+                                <td>${item.user_name}</td>
+                                <td>${item.message}</td>
+                                <td>${new Date(item.submitted_at).toLocaleString()}</td>
+                            </tr>`;
+                    });
+                    feedbackHtml += `</tbody></table></section>`;
+
+                    adminContent.innerHTML = usersHtml + notesHtml + feedbackHtml;
+
+                }).catch(error => {
+                    adminContent.innerHTML = '<h2>Error loading data. Please try again.</h2>';
+                });
+            }
+
+            loadDashboard(); // Load the data when the page opens
+
+            // Add Event Listener for both Approve and Delete Buttons
+            adminContent.addEventListener('click', (event) => {
+                const button = event.target;
+                const noteId = button.dataset.noteId;
+
+                if (button.classList.contains('approve-btn')) {
+                    button.disabled = true;
+                    button.textContent = 'Approving...';
+                    fetch(`/api/admin/notes/${noteId}/approve`, { method: 'POST' })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.success) { loadDashboard(); } 
+                            else { button.textContent = 'Error!'; }
+                        });
+                } else if (button.classList.contains('delete-btn')) {
+                    if (confirm('Are you sure you want to permanently delete this note and its reviews?')) {
+                        fetch(`/api/admin/notes/${noteId}`, { method: 'DELETE' })
+                            .then(res => res.json())
+                            .then(data => {
+                                if (data.success) {
+                                    // Remove the row from the page instantly
+                                    document.querySelector(`tr[data-note-id='${noteId}']`).remove();
+                                }
+                            });
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

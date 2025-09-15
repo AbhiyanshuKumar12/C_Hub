@@ -443,3 +443,54 @@ footer {
     border: 1px solid #ccc;
     border-radius: 5px;
 }
+
+/* --- Admin Dashboard Table Styles --- */
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    background: #fff;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.admin-table th, .admin-table td {
+    border: 1px solid #ddd;
+    padding: 12px;
+    text-align: left;
+}
+
+.admin-table th {
+    background-color: #0056b3;
+    color: white;
+}
+
+.admin-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+/* --- Upload Progress Bar Styles --- */
+.progress-container {
+    width: 100%;
+    background-color: #e0e0e0;
+    border-radius: 5px;
+    margin-top: 20px;
+    display: none; /* Hidden by default */
+}
+
+.progress-bar {
+    width: 0%; /* Starts at 0 */
+    height: 20px;
+    background-color: #28a745;
+    border-radius: 5px;
+    text-align: center;
+    line-height: 20px;
+    color: white;
+    transition: width 0.4s ease;
+}
+
+/* Style for the disabled upload button */
+.cta-button:disabled {
+    background-color: #28dd31;
+    cursor: not-allowed;
+    transform: none;
+}
