@@ -6,11 +6,42 @@
     <title>Note Details - The Gradebook</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
-        .pdf-iframe { width: 100%; height: 80vh; border: 1px solid #ccc; border-radius: 5px; }
+        /* Styles for the Review Section */
         .rating-summary { background: #e9f5ff; border-left: 5px solid #007bff; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
         .rating-summary h3 { margin-top: 0; }
         .star { font-size: 1.5rem; color: #ffc107; }
-        .download-section { text-align: center; background: #fff; padding: 40px; border-radius: 8px; margin-bottom: 40px; }
+        
+        /* Styles for the Download Section */
+        .download-section { 
+            text-align: center; 
+            background: #fff; 
+            padding: 60px 20px; 
+            border-radius: 8px; 
+            margin-bottom: 40px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        /* Make the download button big and noticeable */
+        .download-btn-large {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-decoration: none;
+            border-radius: 50px; /* Rounded pill shape */
+            margin-top: 20px;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .download-btn-large:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px); /* Slight lift on hover */
+        }
+        
+        .file-icon { font-size: 3rem; margin-bottom: 10px; display: block; }
     </style>
 </head>
 <body>
@@ -23,12 +54,18 @@
 
     <main class="container page-padding">
         
-        <section id="note-viewer-section" class="download-section">
+        <!-- DOWNLOAD SECTION -->
+        <section id="note-download-section" class="download-section">
             <h1 id="note-title">Loading note...</h1>
-            <!-- The PDF viewer will be created here by JavaScript -->
-            <div id="pdf-viewer-container" style="margin-top: 20px;"></div>
+            <!-- Optional Professor Name display -->
+            <p id="note-professor" style="color: #666; font-style: italic; margin-bottom: 20px;"></p>
+            
+            <div id="download-button-container">
+                <!-- The download button will appear here -->
+            </div>
         </section>
 
+        <!-- REVIEW SECTION -->
         <section class="reviews-section">
             <h2>Student Reviews</h2>
             <div id="rating-summary" class="rating-summary"></div>
@@ -37,7 +74,14 @@
                 <h3>Leave a Review</h3>
                 <form id="review-form">
                     <label for="rating">Rating:</label>
-                    <select id="rating" name="rating" required><option value="" disabled selected>Select a Rating</option><option value="5">★★★★★</option><option value="4">★★★★☆</option><option value="3">★★★☆☆</option><option value="2">★★☆☆☆</option><option value="1">★☆☆☆☆</option></select>
+                    <select id="rating" name="rating" required>
+                        <option value="" disabled selected>Select a Rating</option>
+                        <option value="5">★★★★★ (Excellent)</option>
+                        <option value="4">★★★★☆ (Good)</option>
+                        <option value="3">★★★☆☆ (Average)</option>
+                        <option value="2">★★☆☆☆ (Poor)</option>
+                        <option value="1">★☆☆☆☆ (Terrible)</option>
+                    </select>
                     <label for="comment">Your Comment:</label>
                     <textarea id="comment" name="comment" rows="4" required></textarea>
                     <button type="submit" class="cta-button">Submit Review</button>
@@ -53,36 +97,39 @@
             const noteId = params.get('id');
 
             const noteTitleElement = document.getElementById('note-title');
-            const pdfContainer = document.getElementById('pdf-viewer-container');
+            const noteProfessorElement = document.getElementById('note-professor');
+            const downloadContainer = document.getElementById('download-button-container');
             const reviewForm = document.getElementById('review-form');
             const reviewsListEl = document.getElementById('reviews-list');
             const ratingSummaryEl = document.getElementById('rating-summary');
 
             if (noteId) {
-                // Fetch Note Details and Embed the PDF
+                // 1. Fetch Note Details
                 fetch(`/api/notes/${noteId}`)
                     .then(response => response.json())
                     .then(note => {
                         if (note && note.filepath) {
                             noteTitleElement.textContent = note.title;
                             
-                            // Create an iframe to embed the PDF
-                            const pdfEmbed = document.createElement('iframe');
+                            if (note.professor_name) {
+                                noteProfessorElement.textContent = `Notes by: ${note.professor_name}`;
+                            }
+
+                            // Create the Download Button
+                            const downloadBtn = document.createElement('a');
+                            downloadBtn.href = note.filepath; // Direct link to Cloudinary
+                            downloadBtn.className = 'download-btn-large';
+                            downloadBtn.textContent = '📄 Download Notes';
+                            downloadBtn.target = '_blank'; // Opens in new tab/downloads
                             
-                            // --- THIS IS THE FINAL FIX ---
-                            // Add a flag to the Cloudinary URL to display the file
-                            const viewableUrl = note.filepath.replace('/upload/', '/upload/fl_inline/');
-                            pdfEmbed.src = viewableUrl;
-                            
-                            pdfEmbed.className = 'pdf-iframe';
-                            
-                            pdfContainer.innerHTML = ''; // Clear the container
-                            pdfContainer.appendChild(pdfEmbed);
+                            downloadContainer.innerHTML = '';
+                            downloadContainer.appendChild(downloadBtn);
                         } else {
-                            noteTitleElement.textContent = 'Note not found or not yet approved.';
+                            noteTitleElement.textContent = 'Note not found.';
                         }
                     });
                 
+                // 2. Fetch and Display Reviews
                 loadReviews();
             }
 
@@ -95,19 +142,28 @@
                             ratingSummaryEl.innerHTML = '<h3>No reviews yet. Be the first!</h3>';
                             return;
                         }
+                        // Calculate Average
                         const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
                         const averageRating = (totalRating / reviews.length).toFixed(1);
                         const stars = '★'.repeat(Math.round(averageRating)) + '☆'.repeat(5 - Math.round(averageRating));
+                        
                         ratingSummaryEl.innerHTML = `<h3>Average Rating: ${averageRating} / 5.0 (${reviews.length} reviews)</h3><div class="star">${stars}</div>`;
+                        
+                        // Render Reviews
                         reviews.forEach(review => {
                             const reviewEl = document.createElement('div');
                             reviewEl.className = 'review-card';
-                            reviewEl.innerHTML = `<div class="review-author">${review.user_name}</div><div class="review-rating">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</div><p class="review-text">${review.comment}</p>`;
+                            reviewEl.innerHTML = `
+                                <div class="review-author">${review.user_name}</div>
+                                <div class="review-rating">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</div>
+                                <p class="review-text">${review.comment}</p>
+                            `;
                             reviewsListEl.appendChild(reviewEl);
                         });
                     });
             }
 
+            // Handle Review Submission
             reviewForm.addEventListener('submit', (event) => {
                 event.preventDefault();
                 const formData = new FormData(reviewForm);
@@ -123,11 +179,10 @@
                 .then(response => response.json())
                 .then(data => {
                     reviewForm.reset();
-                    loadReviews();
+                    loadReviews(); // Refresh reviews
                 });
             });
         });
     </script>
 </body>
 </html>
-
