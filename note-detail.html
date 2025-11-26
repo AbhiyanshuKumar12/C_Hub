@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Note Details - The Gradebook</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
@@ -10,7 +10,10 @@
         .rating-summary { background: #e9f5ff; border-left: 5px solid #007bff; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
         .rating-summary h3 { margin-top: 0; }
         .star { font-size: 1.5rem; color: #ffc107; }
-        
+        .review-card { background: #fff; padding: 16px; margin-bottom: 12px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .review-author { font-weight: 700; margin-bottom: 6px; color: #333; }
+        .review-rating { margin-bottom: 8px; color: #e8a400; }
+
         /* Styles for the Download Section */
         .download-section { 
             text-align: center; 
@@ -42,6 +45,12 @@
         }
         
         .file-icon { font-size: 3rem; margin-bottom: 10px; display: block; }
+
+        .notice { color: #666; margin-top: 8px; }
+        .error { color: #b00020; background: #fff0f0; padding: 12px; border-radius: 6px; margin-bottom: 12px; }
+        .muted { color: #777; font-size: 0.95rem; }
+        .cta-button { background: #007bff; color: #fff; padding: 10px 14px; border-radius: 6px; border: none; cursor: pointer; }
+        .cta-button:hover { background: #0056b3; }
     </style>
 </head>
 <body>
@@ -58,11 +67,13 @@
         <section id="note-download-section" class="download-section">
             <h1 id="note-title">Loading note...</h1>
             <!-- Optional Professor Name display -->
-            <p id="note-professor" style="color: #666; font-style: italic; margin-bottom: 20px;"></p>
-            
-            <div id="download-button-container">
+            <p id="note-professor" class="muted" style="font-style: italic; margin-bottom: 20px;"></p>
+
+            <div id="download-button-container" aria-live="polite">
                 <!-- The download button will appear here -->
             </div>
+
+            <div id="note-error" style="margin-top:12px;"></div>
         </section>
 
         <!-- REVIEW SECTION -->
@@ -72,6 +83,7 @@
             <div id="reviews-list"></div>
             <div class="review-form">
                 <h3>Leave a Review</h3>
+                <div id="review-error" role="alert" style="display:none;" class="error"></div>
                 <form id="review-form">
                     <label for="rating">Rating:</label>
                     <select id="rating" name="rating" required>
@@ -92,6 +104,17 @@
 
     <script src="main.js"></script>
     <script>
+        // small helper to escape text and avoid basic XSS when inserting into innerHTML
+        function escapeHtml(str){
+            if (!str && str !== 0) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             const params = new URLSearchParams(window.location.search);
             const noteId = params.get('id');
@@ -102,84 +125,170 @@
             const reviewForm = document.getElementById('review-form');
             const reviewsListEl = document.getElementById('reviews-list');
             const ratingSummaryEl = document.getElementById('rating-summary');
+            const noteErrorEl = document.getElementById('note-error');
+            const reviewErrorEl = document.getElementById('review-error');
 
-            if (noteId) {
-                // 1. Fetch Note Details
-                fetch(`/api/notes/${noteId}`)
-                    .then(response => response.json())
-                    .then(note => {
-                        if (note && note.filepath) {
-                            noteTitleElement.textContent = note.title;
-                            
-                            if (note.professor_name) {
-                                noteProfessorElement.textContent = `Notes by: ${note.professor_name}`;
-                            }
-
-                            // Create the Download Button
-                            const downloadBtn = document.createElement('a');
-                            downloadBtn.href = note.filepath; // Direct link to Cloudinary
-                            downloadBtn.className = 'download-btn-large';
-                            downloadBtn.textContent = '📄 Download Notes';
-                            downloadBtn.target = '_blank'; // Opens in new tab/downloads
-                            
-                            downloadContainer.innerHTML = '';
-                            downloadContainer.appendChild(downloadBtn);
-                        } else {
-                            noteTitleElement.textContent = 'Note not found.';
-                        }
-                    });
-                
-                // 2. Fetch and Display Reviews
-                loadReviews();
+            // show friendly fetch error
+            function showNoteError(msg) {
+                noteErrorEl.innerHTML = `<div class="error">${escapeHtml(msg)}</div>`;
             }
 
+            if (!noteId) {
+                noteTitleElement.textContent = 'No note selected.';
+                return;
+            }
+
+            // 1. Fetch Note Details
+            fetch(`/api/notes/${encodeURIComponent(noteId)}`)
+                .then(async (response) => {
+                    if (!response.ok) {
+                        const text = await response.text().catch(()=>'');
+                        throw new Error(text || 'Failed to fetch note details');
+                    }
+                    return response.json();
+                })
+                .then(note => {
+                    if (!note) throw new Error('Note data is empty');
+
+                    // title / professor
+                    noteTitleElement.textContent = note.title ? note.title : 'Untitled Note';
+                    noteProfessorElement.textContent = note.professor_name ? `Notes by: ${note.professor_name}` : '';
+
+                    // If file path is available, show Download and View buttons
+                    if (note.filepath) {
+                        // Validate basic structure of URL (starts with http)
+                        if (/^https?:\/\//i.test(note.filepath)) {
+                            downloadContainer.innerHTML = '';
+
+                            // Download button (forces download when possible)
+                            const downloadBtn = document.createElement('a');
+                            downloadBtn.className = 'download-btn-large';
+                            downloadBtn.textContent = '📄 Download Notes';
+                            downloadBtn.href = note.filepath;
+                            downloadBtn.target = '_blank';
+                            downloadBtn.rel = 'noopener noreferrer';
+                            // download attribute may be ignored for cross-origin, but it helps in many browsers
+                            downloadBtn.setAttribute('download', '');
+
+                            downloadContainer.appendChild(downloadBtn);
+
+                            // Optional small "View in Browser" link next to button
+                            const viewBtn = document.createElement('a');
+                            viewBtn.href = note.filepath;
+                            viewBtn.target = '_blank';
+                            viewBtn.rel = 'noopener noreferrer';
+                            viewBtn.style.display = 'inline-block';
+                            viewBtn.style.marginLeft = '12px';
+                            viewBtn.className = 'muted';
+                            viewBtn.textContent = 'View in browser';
+                            downloadContainer.appendChild(viewBtn);
+
+                            noteErrorEl.innerHTML = '';
+                        } else {
+                            showNoteError('Stored file URL is not a valid link. Contact the admin.');
+                        }
+                    } else {
+                        downloadContainer.innerHTML = '<div class="muted">No file attached to this note.</div>';
+                    }
+                })
+                .catch(err => {
+                    console.error('Note fetch error:', err);
+                    noteTitleElement.textContent = 'Unable to load note';
+                    showNoteError('Could not load note details. Please try again later.');
+                });
+
+            // 2. Fetch and Display Reviews
             function loadReviews() {
-                fetch(`/api/notes/${noteId}/reviews`)
-                    .then(response => response.json())
+                fetch(`/api/notes/${encodeURIComponent(noteId)}/reviews`)
+                    .then(async response => {
+                        if (!response.ok) {
+                            const text = await response.text().catch(()=>'');
+                            throw new Error(text || 'Failed to fetch reviews');
+                        }
+                        return response.json();
+                    })
                     .then(reviews => {
                         reviewsListEl.innerHTML = ''; 
-                        if (reviews.length === 0) {
+                        if (!Array.isArray(reviews) || reviews.length === 0) {
                             ratingSummaryEl.innerHTML = '<h3>No reviews yet. Be the first!</h3>';
                             return;
                         }
-                        // Calculate Average
-                        const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
-                        const averageRating = (totalRating / reviews.length).toFixed(1);
-                        const stars = '★'.repeat(Math.round(averageRating)) + '☆'.repeat(5 - Math.round(averageRating));
+                        // Calculate Average (ensure numeric)
+                        const totalRating = reviews.reduce((sum, review) => sum + (Number(review.rating) || 0), 0);
+                        const averageRating = (totalRating / reviews.length);
+                        const averageRounded = Math.round(averageRating * 10) / 10; // 1 decimal
+                        const starsCount = Math.round(averageRating);
+                        const stars = '★'.repeat(starsCount) + '☆'.repeat(5 - starsCount);
                         
-                        ratingSummaryEl.innerHTML = `<h3>Average Rating: ${averageRating} / 5.0 (${reviews.length} reviews)</h3><div class="star">${stars}</div>`;
+                        ratingSummaryEl.innerHTML = `<h3>Average Rating: ${escapeHtml(String(averageRounded))} / 5.0 (${reviews.length} reviews)</h3><div class="star">${escapeHtml(stars)}</div>`;
                         
                         // Render Reviews
                         reviews.forEach(review => {
                             const reviewEl = document.createElement('div');
                             reviewEl.className = 'review-card';
+                            const user = escapeHtml(review.user_name || 'Anonymous');
+                            const ratingStars = '★'.repeat(Math.max(0, Math.min(5, Number(review.rating) || 0))) + '☆'.repeat(5 - Math.max(0, Math.min(5, Number(review.rating) || 0)));
+                            const comment = escapeHtml(review.comment || '');
                             reviewEl.innerHTML = `
-                                <div class="review-author">${review.user_name}</div>
-                                <div class="review-rating">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</div>
-                                <p class="review-text">${review.comment}</p>
+                                <div class="review-author">${user}</div>
+                                <div class="review-rating">${ratingStars}</div>
+                                <p class="review-text">${comment}</p>
                             `;
                             reviewsListEl.appendChild(reviewEl);
                         });
+                    })
+                    .catch(err => {
+                        console.error('Reviews fetch error:', err);
+                        ratingSummaryEl.innerHTML = '<h3>Unable to load reviews.</h3>';
                     });
             }
+
+            loadReviews();
 
             // Handle Review Submission
             reviewForm.addEventListener('submit', (event) => {
                 event.preventDefault();
+                reviewErrorEl.style.display = 'none';
                 const formData = new FormData(reviewForm);
+                const rating = Number(formData.get('rating'));
+                const comment = formData.get('comment') || '';
+
+                if (!rating || rating < 1 || rating > 5) {
+                    reviewErrorEl.textContent = 'Please select a valid rating.';
+                    reviewErrorEl.style.display = 'block';
+                    return;
+                }
+                if (!comment.trim()) {
+                    reviewErrorEl.textContent = 'Please add a comment.';
+                    reviewErrorEl.style.display = 'block';
+                    return;
+                }
+
                 const reviewData = {
-                    rating: formData.get('rating'),
-                    comment: formData.get('comment')
+                    rating: rating,           // ensure this is a number
+                    comment: comment.trim()
                 };
-                fetch(`/api/notes/${noteId}/reviews`, {
+
+                fetch(`/api/notes/${encodeURIComponent(noteId)}/reviews`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(reviewData)
                 })
-                .then(response => response.json())
+                .then(async response => {
+                    if (!response.ok) {
+                        const text = await response.text().catch(()=>'');
+                        throw new Error(text || 'Failed to submit review');
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     reviewForm.reset();
                     loadReviews(); // Refresh reviews
+                })
+                .catch(err => {
+                    console.error('Submit review error:', err);
+                    reviewErrorEl.textContent = 'Could not submit review. Try again later.';
+                    reviewErrorEl.style.display = 'block';
                 });
             });
         });

@@ -8,8 +8,9 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
+// const cloudinary = require('cloudinary').v2;
 const fs = require('fs');
+const cloudinary = require('./cloudinary');
 
 // =================================================================
 // --- APP CONFIGURATION & MIDDLEWARE ---
@@ -214,27 +215,35 @@ app.get('/logout', (req, res) => {
     });
 });
 
-app.post('/upload', checkAuthenticated, upload.single('noteFile'), async (req, res) => {
-    if (!req.file) { return res.status(400).send('No file was uploaded.'); }
-    const { title, subject, branch, professor_name } = req.body;
-    const uploader_id = req.session.user.id;
-    const tempFilePath = req.file.path;
+
+
+app.post('/upload', upload.single('note_file'), async (req, res) => {
     try {
-        let resourceType = 'raw';
-        if (req.file.mimetype.startsWith('image/')) { resourceType = 'image'; }
-        const result = await cloudinary.uploader.upload(tempFilePath, { resource_type: resourceType, folder: 'collegehub_notes' });
-        const { original_filename: filename, secure_url: filepath } = result;
-        const sql = `INSERT INTO notes (title, subject, branch, professor_name, filename, filepath, uploader_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`;
-        const values = [title, subject, branch, professor_name, filename, filepath, uploader_id];
-        await db.query(sql, values);
-        res.send(`<div style="font-family: sans-serif; text-align: center; padding-top: 50px;"><h1>Thank You!</h1><p>Your note has been submitted for admin approval.</p><a href="/notes.html" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Back to Notes</a></div>`);
-    } catch (error) {
-        console.error('Upload Process Failed:', error);
-        res.status(500).send('An error occurred during the upload process. Please try again.');
-    } finally {
-        if (fs.existsSync(tempFilePath)) { fs.unlinkSync(tempFilePath); }
+        const title = req.body.title;
+        const description = req.body.description;
+
+        // Upload to Cloudinary as RAW (PDF)
+        const result = await cloudinary.uploader.upload(req.file.path, {
+            resource_type: "raw",
+            folder: "collegehub_notes"
+        });
+
+        const fileUrl = result.secure_url; // Cloudinary PDF URL
+
+        // INSERT INTO PostgreSQL correctly
+        await db.query(
+            `INSERT INTO notes (title, description, file_path, approved) VALUES ($1, $2, $3, false)`,
+            [title, description, fileUrl]
+        );
+
+        res.redirect('/notes.html');
+
+    } catch (err) {
+        console.error("Upload error:", err);
+        res.status(500).send("File Upload Failed");
     }
 });
+
 
 // --- PAGE SERVING ROUTES ---
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
