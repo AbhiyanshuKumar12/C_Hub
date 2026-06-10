@@ -4,7 +4,6 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
 const multer = require('multer');
@@ -25,10 +24,14 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 app.use(session({
-    secret: 'a-very-secret-key-that-you-should-change',
+    secret: process.env.SESSION_SECRET || 'dev-secret-key',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false }
+    cookie: { 
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        sameSite: 'lax'
+    }
 }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -37,11 +40,44 @@ app.use(express.static(path.join(__dirname)));
 // =================================================================
 // --- DATABASE CONNECTION & MIDDLEWARE ---
 // =================================================================
-const db = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+const sqlite3 = require('sqlite3').verbose();
+
+const sqliteDb = new sqlite3.Database('./collegehub.db', sqlite3.OPEN_READWRITE, (err) => {
+    if (err) {
+        console.error("SQLite Connection Error:", err.message);
+    } else {
+        console.log('Connected to the local SQLite database. 🗄️');
+    }
 });
-console.log('Connected to the PostgreSQL database. 🐘');
+
+const db = {
+    query: (sql, params = []) => {
+        return new Promise((resolve, reject) => {
+            // Convert PostgreSQL parameters ($1, $2, etc.) to SQLite parameters (?)
+            let sqliteSql = sql.replace(/\$[0-9]+/g, '?');
+            // Convert ILIKE to LIKE for SQLite
+            sqliteSql = sqliteSql.replace(/ILIKE/g, 'LIKE');
+
+            if (sqliteSql.trim().toUpperCase().startsWith('SELECT') || sqliteSql.includes('RETURNING')) {
+                sqliteDb.all(sqliteSql, params, (err, rows) => {
+                    if (err) reject(err);
+                    else resolve({ rows });
+                });
+            } else {
+                sqliteDb.run(sqliteSql, params, function(err) {
+                    if (err) {
+                        if (err.message.includes('UNIQUE constraint failed')) {
+                            err.code = '23505'; // Mock PG's unique constraint error code
+                        }
+                        reject(err);
+                    } else {
+                        resolve({ rows: [], rowCount: this.changes });
+                    }
+                });
+            }
+        });
+    }
+};
 
 const checkAuthenticated = (req, res, next) => {
     if (req.session.user) { return next(); }
@@ -119,6 +155,44 @@ app.post('/api/feedback', async (req, res) => {
     try {
         await db.query(`INSERT INTO feedback (user_id, user_name, message) VALUES ($1, $2, $3)`, [userId, userName, message]);
         res.json({ success: true, message: 'Feedback submitted.' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- USER PROFILE API ROUTES ---
+app.get('/api/user/notes', checkAuthenticated, async (req, res) => {
+    try {
+        const userId = req.session.user.id;
+        const sql = `
+            SELECT n.*, 
+                   (SELECT AVG(rating) FROM reviews r WHERE r.note_id = n.id) as avg_rating,
+                   (SELECT COUNT(*) FROM reviews r WHERE r.note_id = n.id) as review_count
+            FROM notes n 
+            WHERE n.uploader_id = $1 
+            ORDER BY n.id DESC
+        `;
+        const { rows } = await db.query(sql, [userId]);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/user/notes/:id', checkAuthenticated, async (req, res) => {
+    try {
+        const noteId = req.params.id;
+        const userId = req.session.user.id;
+        
+        // Ensure the note belongs to this user
+        const { rows } = await db.query(`SELECT id FROM notes WHERE id = $1 AND uploader_id = $2`, [noteId, userId]);
+        if (rows.length === 0) {
+            return res.status(403).json({ error: 'You do not have permission to delete this note.' });
+        }
+
+        await db.query(`DELETE FROM reviews WHERE note_id = $1`, [noteId]);
+        await db.query(`DELETE FROM notes WHERE id = $1`, [noteId]);
+        res.json({ success: true, message: 'Note deleted successfully.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -217,23 +291,22 @@ app.get('/logout', (req, res) => {
 
 
 
-app.post('/upload', upload.single('note_file'), async (req, res) => {
+app.post('/upload', upload.single('noteFile'), async (req, res) => {
     try {
         const title = req.body.title;
-        const description = req.body.description;
+        const subject = req.body.subject;
+        const branch = req.body.branch;
+        const uploaderId = req.session.user ? req.session.user.id : null;
 
-        // Upload to Cloudinary as RAW (PDF)
-        const result = await cloudinary.uploader.upload(req.file.path, {
-            resource_type: "raw",
-            folder: "collegehub_notes"
-        });
+        // The file is already saved locally by multer.
+        // Let's use the local URL instead of Cloudinary to avoid 401 permissions errors.
+        const fileUrl = '/uploads/' + req.file.filename; 
+        const filename = req.file.originalname;
 
-        const fileUrl = result.secure_url; // Cloudinary PDF URL
-
-        // INSERT INTO PostgreSQL correctly
+        // INSERT INTO Database
         await db.query(
-            `INSERT INTO notes (title, description, file_path, approved) VALUES ($1, $2, $3, false)`,
-            [title, description, fileUrl]
+            `INSERT INTO notes (title, subject, branch, filename, filepath, uploader_id, approved) VALUES ($1, $2, $3, $4, $5, $6, false)`,
+            [title, subject, branch, filename, fileUrl, uploaderId]
         );
 
         res.redirect('/notes.html');
@@ -252,6 +325,7 @@ app.get('/upload.html', checkAuthenticated, (req, res) => { res.sendFile(path.jo
 app.get('/note-detail.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'note-detail.html')); });
 app.get('/admin', checkAdmin, (req, res) => { res.sendFile(path.join(__dirname, 'admin.html')); });
 app.get('/feedback.html', (req, res) => { res.sendFile(path.join(__dirname, 'feedback.html')); });
+app.get('/profile.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'profile.html')); });
 
 // =================================================================
 // --- START SERVER ---

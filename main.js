@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // User is logged in
                 navLinksHTML += `
                     <li><a href="upload.html">Upload Notes</a></li>
+                    <li><a href="profile.html">Profile</a></li>
                 `;
 
                 if (data.role === 'admin') {

@@ -156,9 +156,22 @@
 
                     // If file path is available, show Download and View buttons
                     if (note.filepath) {
-                        // Validate basic structure of URL (starts with http)
-                        if (/^https?:\/\//i.test(note.filepath)) {
+                        // Validate basic structure of URL (starts with http or is a local path)
+                        if (/^https?:\/\//i.test(note.filepath) || note.filepath.startsWith('/')) {
                             downloadContainer.innerHTML = '';
+
+                            // Show PDF preview if applicable
+                            if (note.filepath.toLowerCase().endsWith('.pdf')) {
+                                const iframe = document.createElement('iframe');
+                                iframe.src = note.filepath;
+                                iframe.style.width = '100%';
+                                iframe.style.height = '600px';
+                                iframe.style.border = '1px solid #ddd';
+                                iframe.style.borderRadius = '8px';
+                                iframe.style.marginBottom = '20px';
+                                iframe.style.boxShadow = '0 2px 5px rgba(0,0,0,0.05)';
+                                downloadContainer.appendChild(iframe);
+                            }
 
                             // Download button (forces download when possible)
                             const downloadBtn = document.createElement('a');

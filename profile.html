@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile - The Gradebook</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .profile-header {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 5px solid #007bff;
+        }
+        .profile-header h2 { margin-top: 0; }
+        .status-pending { color: #ff8c00; font-weight: bold; }
+        .status-approved { color: #28a745; font-weight: bold; }
+        .delete-btn {
+            background-color: #dc3545;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            border: none;
+        }
+        .delete-btn:hover { background-color: #c82333; }
+        .view-link {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .view-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <nav class="container">
+            <a href="index.html" class="logo">The Gradebook</a>
+            <ul><!-- Filled by main.js --></ul>
+        </nav>
+    </header>
+
+    <main class="container page-padding">
+        <h1 class="page-title">My Profile</h1>
+        
+        <div id="profile-info" class="profile-header">
+            <h2>Loading profile...</h2>
+        </div>
+
+        <section class="subject-section">
+            <h2>My Uploaded Notes</h2>
+            <div id="user-notes-container">
+                <p>Loading your notes...</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="main.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const profileInfo = document.getElementById('profile-info');
+            const notesContainer = document.getElementById('user-notes-container');
+
+            // Escape utility
+            function escapeHtml(str){
+                if (!str && str !== 0) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            // 1. Fetch User Info
+            fetch('/api/user-status')
+                .then(res => res.json())
+                .then(user => {
+                    if (user.loggedIn) {
+                        profileInfo.innerHTML = `
+                            <h2>Welcome, ${escapeHtml(user.name)}!</h2>
+                            <p><strong>Role:</strong> ${escapeHtml(user.role.toUpperCase())}</p>
+                            <p>Manage your uploaded notes and check their approval status below.</p>
+                        `;
+                    } else {
+                        window.location.href = '/login.html';
+                    }
+                });
+
+            // 2. Fetch User Notes
+            function loadUserNotes() {
+                fetch('/api/user/notes')
+                    .then(res => res.json())
+                    .then(notes => {
+                        if (notes.length === 0) {
+                            notesContainer.innerHTML = '<p>You haven\'t uploaded any notes yet.</p>';
+                            return;
+                        }
+
+                        let html = `
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>Title</th>
+                                        <th>Subject</th>
+                                        <th>Status</th>
+                                        <th>Avg. Rating</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                        `;
+
+                        notes.forEach(note => {
+                            const statusClass = note.approved ? 'status-approved' : 'status-pending';
+                            const statusText = note.approved ? 'Approved' : 'Pending';
+                            const ratingText = note.avg_rating 
+                                ? `${Number(note.avg_rating).toFixed(1)} ★ (${note.review_count} reviews)` 
+                                : 'No reviews';
+
+                            html += `
+                                <tr>
+                                    <td><a href="/note-detail.html?id=${note.id}" class="view-link">${escapeHtml(note.title)}</a></td>
+                                    <td>${escapeHtml(note.subject)}</td>
+                                    <td class="${statusClass}">${statusText}</td>
+                                    <td>${escapeHtml(ratingText)}</td>
+                                    <td>
+                                        <button class="delete-btn" onclick="deleteNote(${note.id})">Delete</button>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+
+                        html += `</tbody></table>`;
+                        notesContainer.innerHTML = html;
+                    })
+                    .catch(err => {
+                        console.error('Error fetching notes:', err);
+                        notesContainer.innerHTML = '<p class="error">Failed to load notes.</p>';
+                    });
+            }
+
+            loadUserNotes();
+
+            // 3. Delete Note Logic (Global function so onclick can access it)
+            window.deleteNote = function(noteId) {
+                if (confirm('Are you sure you want to delete this note? This action cannot be undone.')) {
+                    fetch(`/api/user/notes/${noteId}`, { method: 'DELETE' })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.success) {
+                                loadUserNotes(); // Refresh list
+                            } else {
+                                alert('Error: ' + (data.error || 'Could not delete note.'));
+                            }
+                        })
+                        .catch(err => {
+                            console.error(err);
+                            alert('An error occurred while deleting the note.');
+                        });
+                }
+            };
+        });
+    </script>
+</body>
+</html>
