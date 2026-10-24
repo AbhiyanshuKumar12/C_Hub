@@ -7,8 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "client": "npm --prefix frontend run dev",
-    "build": "npm --prefix frontend install && npm --prefix frontend run build",
-    "postinstall": "npm --prefix frontend install && npm --prefix frontend run build"
+    "build": "node -e \"if (process.platform === 'linux') require('child_process').execSync('npm rebuild sqlite3 --build-from-source', {stdio: 'inherit'})\" && npm --prefix frontend install && npm --prefix frontend run build",
+    "postinstall": "node -e \"if (process.platform === 'linux') require('child_process').execSync('npm rebuild sqlite3 --build-from-source', {stdio: 'inherit'})\" && npm --prefix frontend install && npm --prefix frontend run build"
   },
   "keywords": [],
   "author": "",
