@@ -35,7 +35,14 @@ app.use(session({
 }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+const frontendDist = path.join(__dirname, 'frontend', 'dist');
+if (fs.existsSync(frontendDist)) {
+    app.use(express.static(frontendDist));
+} else {
+    app.use(express.static(path.join(__dirname)));
+}
 
 // =================================================================
 // --- DATABASE CONNECTION & MIDDLEWARE ---
@@ -319,13 +326,23 @@ app.post('/upload', upload.single('noteFile'), async (req, res) => {
 
 
 // --- PAGE SERVING ROUTES ---
-app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
-app.get('/notes.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'notes.html')); });
-app.get('/upload.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'upload.html')); });
-app.get('/note-detail.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'note-detail.html')); });
-app.get('/admin', checkAdmin, (req, res) => { res.sendFile(path.join(__dirname, 'admin.html')); });
-app.get('/feedback.html', (req, res) => { res.sendFile(path.join(__dirname, 'feedback.html')); });
-app.get('/profile.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'profile.html')); });
+if (fs.existsSync(frontendDist)) {
+    app.use(express.static(frontendDist));
+    app.use((req, res, next) => {
+        if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
+            return res.sendFile(path.join(frontendDist, 'index.html'));
+        }
+        next();
+    });
+} else {
+    app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
+    app.get('/notes.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'notes.html')); });
+    app.get('/upload.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'upload.html')); });
+    app.get('/note-detail.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'note-detail.html')); });
+    app.get('/admin', checkAdmin, (req, res) => { res.sendFile(path.join(__dirname, 'admin.html')); });
+    app.get('/feedback.html', (req, res) => { res.sendFile(path.join(__dirname, 'feedback.html')); });
+    app.get('/profile.html', checkAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'profile.html')); });
+}
 
 // =================================================================
 // --- START SERVER ---
