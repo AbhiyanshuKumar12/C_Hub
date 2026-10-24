@@ -15,6 +15,7 @@ const cloudinary = require('./cloudinary');
 // --- APP CONFIGURATION & MIDDLEWARE ---
 // =================================================================
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const saltRounds = 10;
 const storage = multer.diskStorage({
@@ -27,8 +28,9 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'dev-secret-key',
     resave: false,
     saveUninitialized: false,
+    proxy: true,
     cookie: { 
-        secure: process.env.NODE_ENV === 'production',
+        secure: 'auto',
         httpOnly: true,
         sameSite: 'lax'
     }
@@ -278,7 +280,16 @@ app.post('/login', async (req, res) => {
         const match = await bcrypt.compare(password, user.password);
         if (match) {
             req.session.user = { id: user.id, name: user.name, usn: user.usn, role: user.role };
-            res.redirect('/notes.html');
+            req.session.save((err) => {
+                if (err) {
+                    console.error("Session save error:", err);
+                    return res.status(500).send('Session error during login.');
+                }
+                if (req.headers.accept?.includes('application/json')) {
+                    return res.json({ success: true, redirect: '/notes' });
+                }
+                res.redirect('/notes.html');
+            });
         } else {
             res.status(401).send('Login failed: Incorrect password.');
         }
